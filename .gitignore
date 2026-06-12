@@ -1,0 +1,18 @@
+# Compiled binaries — Go builds produce executables; we rebuild them, never commit them
+/bin/
+*.exe
+
+# Test artifacts
+*.out
+coverage.html
+
+# Secrets — .env files hold API keys and passwords; these must NEVER be committed
+.env
+.env.*
+
+# OS junk
+.DS_Store
+
+# Editor/IDE settings (personal, not project)
+.idea/
+.vscode/
