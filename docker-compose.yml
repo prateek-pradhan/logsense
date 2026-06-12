@@ -1,0 +1,74 @@
+# LogSense local infrastructure: Redpanda (Kafka API), MongoDB, Postgres+pgvector.
+# Bring up with:  docker compose up -d
+# Tear down with: docker compose down   (add -v to ALSO wipe data volumes)
+services:
+
+  # Redpanda: a Kafka-compatible event broker in a single binary.
+  # Our gateway produces log events here; consumers read them.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.4
+    command:
+      - redpanda
+      - start
+      # dev-container mode relaxes production safety checks for local use.
+      - --mode=dev-container
+      # Use one CPU core; plenty for local development.
+      - --smp=1
+      # Two listeners: "internal" for other containers (hostname: redpanda),
+      # "external" for programs on your Mac (hostname: localhost).
+      # Kafka clients are told an address to call back on ("advertised"),
+      # so each side needs an address IT can actually reach.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092" # Kafka API for programs on the host (our Go apps)
+      - "9644:9644"   # Admin API (rpk and monitoring use this)
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      # rpk is Redpanda's CLI, baked into the image.
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # MongoDB: where consumed log events are stored and queried.
+  # No auth locally — it is only reachable from this machine.
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # ping returns { ok: 1 } once the server accepts connections.
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Postgres with the pgvector extension: stores incident summaries
+  # and their embeddings for similarity search (Phase 5).
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: logsense
+      # ${...} is read from the .env file next to this compose file.
+      # The password itself is never committed to git.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: logsense
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logsense -d logsense"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# Named volumes: Docker-managed storage that outlives the containers.
+volumes:
+  redpanda-data:
+  mongo-data:
+  postgres-data:
