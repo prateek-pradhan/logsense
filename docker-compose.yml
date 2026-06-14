@@ -32,6 +32,20 @@ services:
       timeout: 5s
       retries: 10
 
+  # Redpanda Console: a web UI to browse topics, partitions, and messages.
+  # Purely a human inspection tool — not part of the data path.
+  console:
+    image: redpandadata/console:v2.7.2
+    ports:
+      - "8090:8080" # browse at http://localhost:8090
+    environment:
+      # Tell the Console how to reach the broker. It runs INSIDE the
+      # Docker network, so it uses the internal address (redpanda:9092),
+      # not localhost:19092 — the two-listener split from Phase 0 in action.
+      KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      - redpanda
+
   # MongoDB: where consumed log events are stored and queried.
   # No auth locally — it is only reachable from this machine.
   mongodb:
