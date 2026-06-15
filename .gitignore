@@ -16,3 +16,6 @@ coverage.html
 # Editor/IDE settings (personal, not project)
 .idea/
 .vscode/
+
+DECISIONS.md
+PROGRESS.md
