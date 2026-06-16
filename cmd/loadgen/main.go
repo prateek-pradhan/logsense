@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -22,6 +25,7 @@ func main() {
 	total := flag.Int("n", 1000, "total events to send")
 	ratePerSec := flag.Int("rate", 500, "target events per second")
 	workers := flag.Int("workers", 8, "number of concurrent senders goroutines")
+	idsFile := flag.String("ids-file", "", "if set, write every ID to this file (one per line)")
 	flag.Parse()
 
 	services := []string{"checkout", "auth", "payments", "search", "cart"}
@@ -30,7 +34,7 @@ func main() {
 	limiter := rate.NewLimiter(rate.Limit(*ratePerSec), *ratePerSec)
 
 	jobs := make(chan schema.LogEvent, 1000)
-
+	var sentIDs []string
 	var latencies []time.Duration
 	var mu sync.Mutex
 	var sent, failed int
@@ -56,6 +60,7 @@ func main() {
 				} else {
 					sent++
 					latencies = append(latencies, elapsed)
+					sentIDs = append(sentIDs, ev.ID)
 				}
 				mu.Unlock()
 			}
@@ -73,6 +78,20 @@ func main() {
 	}
 	close(jobs)
 	wg.Wait()
+
+	if *idsFile != "" {
+		f, err := os.Create(*idsFile)
+		if err != nil {
+			log.Fatalf("create ids-file: %v", err)
+		}
+		w := bufio.NewWriter(f)
+		for _, id := range sentIDs {
+			fmt.Fprintln(w, id)
+		}
+		w.Flush()
+		f.Close()
+		fmt.Printf("wrote %d ids to %s\n", len(sentIDs), *idsFile)
+	}
 
 	elapsed := time.Since(start)
 	achieved := float64(sent) / elapsed.Seconds()
