@@ -49,3 +49,34 @@ func (s *Store) BulkInsert(ctx context.Context, events []schema.LogEvent) error 
 	_, err := s.logs.BulkWrite(ctx, models, opts)
 	return err
 }
+
+func (s *Store) ExistingIDs(ctx context.Context, ids []string) (map[string]struct{}, error) {
+	found := make(map[string]struct{}, len(ids))
+	const chunk = 1000
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		filter := bson.M{"_id": bson.M{"$in": ids[start:end]}}
+		opts := options.Find().SetProjection(bson.M{"_id": 1})
+		cursor, err := s.logs.Find(ctx, filter, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		for cursor.Next(ctx) {
+			var doc struct {
+				ID string `bson:"_id"`
+			}
+			if err := cursor.Decode(&doc); err != nil {
+				cursor.Close(ctx)
+				return nil, err
+			}
+
+			found[doc.ID] = struct{}{}
+		}
+		cursor.Close(ctx)
+	}
+	return found, nil
+}
