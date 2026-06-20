@@ -80,3 +80,14 @@ func (s *Store) ExistingIDs(ctx context.Context, ids []string) (map[string]struc
 	}
 	return found, nil
 }
+
+func (s *Store) EnsureIndexes(ctx context.Context) error {
+	models := []mongo.IndexModel{
+		{Keys: bson.D{{Key: "service", Value: 1}, {Key: "event_time", Value: -1}}},
+		{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "event_time", Value: -1}}},
+		{Keys: bson.D{{Key: "trace_id", Value: 1}}, Options: options.Index().SetSparse(true)},
+		{Keys: bson.D{{Key: "ingested_at", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(604800)},
+	}
+	_, err := s.logs.Indexes().CreateMany(ctx, models)
+	return err
+}

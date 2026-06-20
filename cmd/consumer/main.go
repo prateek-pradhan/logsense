@@ -38,6 +38,9 @@ func main() {
 
 	store, err := storage.Connect(connCtx, env0r("MONGO_URI", "mongodb://localhost:27017"))
 
+	if err := store.EnsureIndexes(connCtx); err != nil {
+		log.Fatalf("ensure indexes: %v", err)
+	}
 	connCancel()
 
 	if err != nil {
