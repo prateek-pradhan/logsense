@@ -22,6 +22,13 @@ func env0r(key, fallback string) string {
 	return fallback
 }
 
+func onRevoked(ctx context.Context, cl *kgo.Client, revoked map[string][]int32) {
+	log.Printf("partitions being revoked, committing first: %v", revoked)
+	if err := cl.CommitUncommittedOffsets(ctx); err != nil {
+		log.Printf("commit on revoke failed: %v", err)
+	}
+}
+
 func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -42,6 +49,8 @@ func main() {
 		kgo.SeedBrokers(env0r("KAFKA_BROKERS", "localhost:19092")),
 		kgo.ConsumerGroup("logsense-writers"),
 		kgo.ConsumeTopics("logs.raw"),
+		kgo.Balancers(kgo.CooperativeStickyBalancer()),
+		kgo.OnPartitionsRevoked(onRevoked),
 		kgo.DisableAutoCommit(),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
