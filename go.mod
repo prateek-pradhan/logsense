@@ -3,6 +3,7 @@ module github.com/prateek-pradhan/logsense
 go 1.25.0
 
 require (
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/twmb/franz-go v1.21.3
 	go.mongodb.org/mongo-driver v1.17.9
