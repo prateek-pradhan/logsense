@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"time"
+
 	"github.com/prateek-pradhan/logsense/pkg/schema"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,6 +14,15 @@ import (
 type Store struct {
 	client *mongo.Client
 	logs   *mongo.Collection
+}
+
+type SearchParams struct {
+	Service   string
+	Severity  string
+	From      time.Time
+	Before    time.Time
+	Limit     int
+	MaxTimeMS int64
 }
 
 func Connect(ctx context.Context, uri string) (*Store, error) {
@@ -90,4 +101,41 @@ func (s *Store) EnsureIndexes(ctx context.Context) error {
 	}
 	_, err := s.logs.Indexes().CreateMany(ctx, models)
 	return err
+}
+
+func (s *Store) Search(ctx context.Context, p SearchParams) ([]schema.LogEvent, error) {
+	filter := bson.M{}
+	if p.Service != "" {
+		filter["service"] = p.Service
+	}
+	if p.Severity != "" {
+		filter["severity"] = p.Severity
+	}
+	timeRange := bson.M{}
+	if !p.From.IsZero() {
+		timeRange["$gte"] = p.From
+	}
+	if !p.Before.IsZero() {
+		timeRange["$lt"] = p.Before
+	}
+	if len(timeRange) > 0 {
+		filter["event_time"] = timeRange
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "event_time", Value: -1}}).
+		SetLimit(int64(p.Limit)).
+		SetMaxTime(time.Duration(p.MaxTimeMS) * time.Millisecond)
+
+	cursor, err := s.logs.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []schema.LogEvent
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }

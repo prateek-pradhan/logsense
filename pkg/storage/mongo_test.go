@@ -66,3 +66,45 @@ func TestBulkUpsertIdempotency(t *testing.T) {
 
 	store.logs.DeleteMany(ctx, filter)
 }
+
+func TestSearchReturnNewestFirst(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store, err := Connect(ctx, "mongodb://localhost:27017")
+	if err != nil {
+		t.Fatalf("connect %v", err)
+	}
+	defer store.Close(ctx)
+
+	base := time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	events := []schema.LogEvent{
+		{Service: "search-test", Severity: "INFO", Message: "old", EventTime: base},
+		{Service: "search-test", Severity: "INFO", Message: "mid", EventTime: base.Add(time.Minute)},
+		{Service: "search-test", Severity: "INFO", Message: "new", EventTime: base.Add(2 * time.Minute)},
+	}
+
+	for i := range events {
+		events[i].ID = events[i].DeterministicID()
+	}
+
+	ids := bson.M{"service": "search-test"}
+	store.logs.DeleteMany(ctx, ids)
+	if err := store.BulkInsert(ctx, events); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := store.Search(ctx, SearchParams{Service: "search-test", Limit: 10, MaxTimeMS: 2000})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(got))
+	}
+
+	if got[0].Message != "new" || got[2].Message != "old" {
+		t.Errorf("wrong order: got %s ... %s (want new ... old)", got[0].Message, got[2].Message)
+	}
+	store.logs.DeleteMany(ctx, ids)
+}
